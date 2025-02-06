@@ -7,7 +7,7 @@ const KuPoVi = () => {
   const height = 600;
   const [data, setData] = useState({ nodes: [], pods: [] });
   const [previousData, setPreviousData] = useState(null);
-  const [deploymentColors, setDeploymentColors] = useState({});
+  const [displayMode, setDisplayMode] = useState("pod"); // Default to display pod names
 
   useEffect(() => {
     const fetchData = async () => {
@@ -26,42 +26,35 @@ const KuPoVi = () => {
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
   }, [previousData]);
 
   useEffect(() => {
     if (!data.nodes.length) return;
 
-    const svg = d3.select(svgRef.current).attr("width", width).attr("height", height);
-
-    // Assign colors to deployments
-    const updatedColors = { ...deploymentColors };
+    // Define a color scale for deployments
     const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
+    // Map deployments to colors
+    const deploymentColors = {};
     data.pods.forEach((pod) => {
-      if (!updatedColors[pod.deployment]) {
-        updatedColors[pod.deployment] = colorScale(Object.keys(updatedColors).length);
+      if (pod.deployment && !deploymentColors[pod.deployment]) {
+        deploymentColors[pod.deployment] = colorScale(pod.deployment);
       }
     });
 
-    setDeploymentColors(updatedColors);
-
-    // Calculate node positions
-    const nodeSpacing = width / (data.nodes.length + 1);
+    const svg = d3.select(svgRef.current)
+      .attr("width", width)
+      .attr("height", height);
 
     const nodes = [
-      ...data.nodes.map((n, i) => ({
-        id: n.name,
-        type: "node",
-        fx: nodeSpacing * (i + 1), // Position nodes evenly horizontally
-        fy: height / 2,
-      })),
+      ...data.nodes.map((n) => ({ id: n.name, type: "node" })),
       ...data.pods.map((pod) => ({
         id: pod.name,
+        deployment: pod.deployment, // Include deployment information
         type: "pod",
         parent: pod.node,
-        color: updatedColors[pod.deployment],
       })),
     ];
 
@@ -74,19 +67,33 @@ const KuPoVi = () => {
         "link",
         d3.forceLink(links)
           .id((d) => d.id)
-          .strength(1)
-          .distance((d) => (d.target.type === "pod" ? 100 : 200)) // Maintain circular orbit for pods
+          .distance((d) => (d.target.type === "pod" ? 120 : 300))
       )
-      .force("charge", d3.forceManyBody().strength(-300))
       .force(
-        "radial", // Circular force for pods around nodes
-        d3.forceRadial(
-          (d) => (d.type === "node" ? 0 : 120), // Radius for pods
-          (d) => (d.type === "node" ? d.fx : nodes.find((n) => n.id === d.parent)?.fx || width / 2),
-          (d) => (d.type === "node" ? d.fy : nodes.find((n) => n.id === d.parent)?.fy || height / 2)
+        "charge",
+        d3.forceManyBody().strength((d) => (d.type === "node" ? -800 : -200))
+      )
+      .force(
+        "x",
+        d3.forceX().strength(0.1).x((d) =>
+          d.type === "node"
+            ? width / 4
+            : d.parent
+            ? width / 2
+            : Math.random() * (width - 20) + 10
         )
       )
-      .force("collide", d3.forceCollide().radius((d) => (d.type === "node" ? 80 : 40)))
+      .force(
+        "y",
+        d3.forceY().strength(0.1).y((d) =>
+          d.type === "node"
+            ? height / 2
+            : d.parent
+            ? height / 2
+            : Math.random() * (height - 20) + 10
+        )
+      )
+      .force("collide", d3.forceCollide().radius((d) => (d.type === "node" ? 100 : 40)))
       .on("tick", ticked);
 
     const link = svg.selectAll(".link")
@@ -99,36 +106,61 @@ const KuPoVi = () => {
       .data(nodes)
       .join("circle")
       .attr("class", "node")
-      .attr("r", (d) => (d.type === "node" ? 20 : 10))
-      .attr("fill", (d) => d.color || "purple")
-      .call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended));
+      .attr("r", (d) => (d.type === "node" ? 15 : 8))
+      .attr("fill", (d) =>
+        d.type === "node"
+          ? "purple"
+          : d.deployment
+          ? deploymentColors[d.deployment]
+          : "red"
+      )
+      .call(
+        d3
+          .drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended)
+      );
 
     const nodeLabels = svg.selectAll(".node-label")
       .data(nodes)
       .join("text")
       .attr("class", "node-label")
       .attr("x", (d) => d.x)
-      .attr("y", (d) => d.y - 25)
+      .attr("y", (d) => d.y - 20)
       .attr("text-anchor", "middle")
       .style("font-size", "12px")
-      .style("fill", "black")
-      .text((d) => d.id);
+      .style("fill", (d) => (d.type === "pod" && !d.parent ? "red" : "black"))
+      .text((d) => (d.type === "pod" ? (displayMode === "pod" ? d.id : d.deployment) : d.id));
 
-    function ticked() {
-      link
-        .attr("x1", (d) => d.source.x)
-        .attr("y1", (d) => d.source.y)
-        .attr("x2", (d) => d.target.x)
-        .attr("y2", (d) => d.target.y);
-
-      node
-        .attr("cx", (d) => d.x)
-        .attr("cy", (d) => d.y);
-
-      nodeLabels
-        .attr("x", (d) => d.x)
-        .attr("y", (d) => d.y - 25);
-    }
+      function ticked() {
+        link
+          .attr("x1", (d) => Math.max(0, Math.min(width, d.source.x)))
+          .attr("y1", (d) => Math.max(0, Math.min(height, d.source.y)))
+          .attr("x2", (d) => Math.max(0, Math.min(width, d.target.x)))
+          .attr("y2", (d) => Math.max(0, Math.min(height, d.target.y)));
+      
+        node
+          .attr("cx", (d) => {
+            const radius = d.type === "node" ? 15 : 8; // Radius of node or pod
+            return (d.x = Math.max(radius, Math.min(width - radius, d.x)));
+          })
+          .attr("cy", (d) => {
+            const radius = d.type === "node" ? 15 : 8; // Radius of node or pod
+            return (d.y = Math.max(radius, Math.min(height - radius, d.y)));
+          });
+      
+        nodeLabels
+          .attr("x", function (d) {
+            const labelWidth = this.getComputedTextLength(); // Dynamic width adjustment
+            return Math.max(
+              labelWidth / 2,
+              Math.min(width - labelWidth / 2, d.x)
+            );
+          })
+          .attr("y", (d) => Math.max(20, Math.min(height - 20, d.y - 20))); // Prevent clipping at top/bottom
+      }
+      
 
     function dragstarted(event, d) {
       if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -146,9 +178,22 @@ const KuPoVi = () => {
       d.fx = null;
       d.fy = null;
     }
-  }, [data]);
+  }, [data, displayMode]);
 
-  return <svg ref={svgRef}></svg>;
+  return (
+    <div>
+      <div style={{ marginBottom: "10px" }}>
+        <label>
+          Display:
+          <select value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
+            <option value="pod">Pod Name</option>
+            <option value="deployment">Deployment Name</option>
+          </select>
+        </label>
+      </div>
+      <svg ref={svgRef}></svg>
+    </div>
+  );
 };
 
 export default KuPoVi;
