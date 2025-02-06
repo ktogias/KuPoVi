@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: ../services/backend
+    ports:
+      - "5010:5010"
+    restart: always
+    volumes:
+    - ../.runtime/kubeconfig:/root/.kube/config:ro # Mount kubeconfig file for cluster access
+    environment:
+      - KUBECONFIG=/root/.kube/config
+
+  frontend:
+    build:
+      context: ../services/frontend
+    ports:
+      - "3000:80"
+    restart: always
+    depends_on:
+      - backend
