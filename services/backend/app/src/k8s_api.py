@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from kubernetes import client, config
 import os
+import hashlib
 
 app = Flask(__name__)
 CORS(app)
@@ -30,18 +31,16 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
             node_name = node.metadata.name
             node_labels = node.metadata.labels
 
-            # Check label filtering
             if filter_label:
                 key, value = filter_label.split("=") if "=" in filter_label else (filter_label, None)
                 if key not in node_labels or (value and node_labels[key] != value):
-                    continue  # Skip nodes that don't match the label filter
+                    continue
 
-            # Modify display based on `display_mode`
             if display_mode == "name":
                 display_name = node_name
             elif display_mode == "label":
                 display_name = node_labels.get(filter_label.split("=")[0], "Unknown")
-            else:  # Default "both"
+            else:
                 label_value = node_labels.get(filter_label.split("=")[0], "Unknown") if filter_label else ""
                 display_name = f"{node_name} ({label_value})" if filter_label else node_name
 
@@ -54,21 +53,33 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
             pod_list = v1.list_pod_for_all_namespaces(watch=False)
 
         pods = []
+        deployment_colors = {}
 
         for pod in pod_list.items:
             node_name = pod.spec.node_name
             pod_name = pod.metadata.name
+            deployment_name = pod.metadata.labels.get("app") or pod.metadata.labels.get("deployment", "unknown")
+
+            # Assign a color per deployment
+            if deployment_name not in deployment_colors:
+                color_hash = hashlib.md5(deployment_name.encode()).hexdigest()[:6]  # Generate a color
+                deployment_colors[deployment_name] = f"#{color_hash}"
+
+            pod_data = {
+                "name": pod_name,
+                "node": None if not node_name else filtered_nodes.get(node_name, {}).get("display_name"),
+                "deployment": deployment_name,
+                "color": deployment_colors[deployment_name],
+            }
 
             if node_name and node_name in filtered_nodes:
-                filtered_nodes[node_name]["pods"].append(pod_name)
+                filtered_nodes[node_name]["pods"].append(pod_data)
             elif not node_name:
-                pods.append({"name": pod_name, "node": None})  # Pending pods
+                pods.append(pod_data)
 
-        # Format response
         return {
-            "nodes": [{"name": data["display_name"]} for node, data in filtered_nodes.items()],
-            "pods": [{"name": pod, "node": data["display_name"]} for node, data in filtered_nodes.items() for pod in data["pods"]] +
-                    [{"name": pod["name"], "node": None} for pod in pods]  # Include unassigned pods
+            "nodes": [{"name": data["display_name"]} for data in filtered_nodes.values()],
+            "pods": [pod for node in filtered_nodes.values() for pod in node["pods"]] + pods
         }
 
     except client.exceptions.ApiException as e:
@@ -80,9 +91,9 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
 @app.route("/api/pods", methods=["GET"])
 def api_pods():
     """API route to get pod data, with optional namespace, label filtering, and display options"""
-    namespace = request.args.get("namespace")  # Get namespace from query params
-    filter_label = request.args.get("label")  # Get node label filter (e.g., label=zone=us-east)
-    display_mode = request.args.get("display", "both")  # Choose name, label, or both
+    namespace = request.args.get("namespace")
+    filter_label = request.args.get("label")
+    display_mode = request.args.get("display", "both")
 
     return jsonify(get_pod_data(namespace, filter_label, display_mode))
 
