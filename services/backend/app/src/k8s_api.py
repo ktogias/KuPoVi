@@ -8,8 +8,8 @@ CORS(app)
 
 def get_pod_data(namespace=None):
     """
-    Fetch pod data using the Kubernetes Python Client.
-    Allows filtering by namespace.
+    Fetch pod and node data using the Kubernetes Python Client.
+    Ensures that all nodes are included, even if no pods are running on them.
     """
     try:
         # Load Kubernetes configuration
@@ -20,13 +20,17 @@ def get_pod_data(namespace=None):
 
         v1 = client.CoreV1Api()
 
+        # Fetch all nodes
+        all_nodes = v1.list_node().items
+        node_names = {node.metadata.name for node in all_nodes}  # Store node names
+
         # Fetch pods, either from a specific namespace or all namespaces
         if namespace:
             pod_list = v1.list_namespaced_pod(namespace)
         else:
             pod_list = v1.list_pod_for_all_namespaces(watch=False)
 
-        nodes = {}
+        nodes = {node_name: [] for node_name in node_names}  # Ensure all nodes exist in response
         pods = []
 
         for pod in pod_list.items:
@@ -34,14 +38,13 @@ def get_pod_data(namespace=None):
             pod_name = pod.metadata.name
 
             if node_name:
-                if node_name not in nodes:
-                    nodes[node_name] = []
                 nodes[node_name].append(pod_name)
             else:
-                pods.append({"name": pod_name, "node": None})  # Pending pods
+                pods.append({"name": pod_name, "node": None})  # Pending pods (not yet assigned)
 
+        # Format response
         return {
-            "nodes": [{"name": node} for node in nodes],
+            "nodes": [{"name": node} for node in nodes.keys()],
             "pods": [{"name": pod, "node": node} for node, pod_list in nodes.items() for pod in pod_list] +
                     [{"name": pod["name"], "node": None} for pod in pods]
         }
