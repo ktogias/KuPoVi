@@ -102,18 +102,28 @@ const KuPoVi = () => {
       .attr("class", "link")
       .attr("stroke", "gray");
 
-    const node = svg.selectAll(".node")
+      const node = svg
+      .selectAll(".node")
       .data(nodes)
       .join("circle")
       .attr("class", "node")
       .attr("r", (d) => (d.type === "node" ? 15 : 8))
-      .attr("fill", (d) =>
-        d.type === "node"
-          ? "purple"
-          : d.deployment
-          ? deploymentColors[d.deployment]
-          : "red"
-      )
+      .attr("fill", (d) => {
+        if (d.type === "pod" && !d.parent) {
+          // Unassigned pods (no parent node) are always red
+          return "red";
+        } else if (d.type === "pod") {
+          // Assigned pods (with parent node) are colored by deployment
+          const deploymentColors = d3
+            .scaleOrdinal(d3.schemeCategory10)
+            .domain(data.pods.map((pod) => pod.deployment || pod.name));
+          return deploymentColors(d.deployment || d.parent);
+        } else if (d.type === "node") {
+          // Nodes are always purple
+          return "purple";
+        }
+        return "gray"; // Default color (shouldn't occur)
+      })
       .call(
         d3
           .drag()
