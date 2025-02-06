@@ -1,18 +1,27 @@
 #!/bin/bash
 
 usage_error() {
-    echo "Usage: $0 dev init|up|down"
-    echo "Use 'dev init' to install k3d and other develompent dependencies."
-    echo "Use 'dev up' to start in development mode with a testing k3d cluster."
-    echo "Use 'dev down' to stop the development cluster and remove development containers"
+    printf "Usage: %s <command> [mode]\n\n" "$0"
+    printf "%s\n" "Commands:"
+    printf "  %s\n" "init           Install k3d and other development dependencies."
+    printf "  %s\n" "up [dev|test]  Start the environment:"
+    printf "  %s\n" "               - 'dev' (default) for development mode with a k3d cluster."
+    printf "  %s\n" "               - 'test' for testing production images in a test k3d cluster."
+    printf "  %s\n" "down           Stop and remove the development cluster and containers."
+    printf "\n"
+    printf "%s\n" "Examples:"
+    printf "  %s %s\n" "$0" "init        # Install dependencies"
+    printf "  %s %s\n" "$0" "up          # Start in development mode"
+    printf "  %s %s\n" "$0" "up test     # Start in test mode with production images"
+    printf "  %s %s\n" "$0" "down        # Stop everything"
+    printf "\n"
     exit 1
 }
+
 
 K3D_INSTALL_SCRIPT="https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 RUNTIME_DIR="${SCRIPT_DIR}/.runtime"
-DEV_DIR="${SCRIPT_DIR}/dev"
-DEV_CLUSTER_NAME="kupovi-dev"
 
 # Function to check if a command exists
 command_exists() {
@@ -53,7 +62,6 @@ install_k3d(){
 }
 
 get_docker_host_ip(){
-    cd "${SCRIPT_DIR}/dev" || exit 1
     # Get the backend container ID
     BACKEND_CONTAINER=$(${DOCKER_COMPOSE_CMD} ps -q backend)
 
@@ -74,7 +82,7 @@ get_docker_host_ip(){
     HOST_IP_IN_DOCKER_NETWORK=$(docker network inspect "$NETWORK_NAME" | jq -r '.[0].IPAM.Config[0].Gateway')
 }
 
-dev_init(){
+init(){
     echo "Checking if docker is installed..."
     docker_installed
     echo "OK!"
@@ -89,13 +97,13 @@ dev_init(){
     echo "OK!"
 }
 
-setup_dev_cluster(){
+setup_test_cluster(){
     local ip="$1"
     local tls_san="--tls-san=${ip}"
     local modified_file="${RUNTIME_DIR}/cluster.yaml"
 
     # Copy the original cluster file
-    cp "${DEV_DIR}/cluster.yaml" "${modified_file}"
+    cp "${SCRIPT_DIR}/cluster.yaml" "${modified_file}"
 
     # Ensure options.k3s exists in the YAML structure
     if [ "$(yq eval '.options.k3s' "$modified_file")" == "null" ]; then
@@ -134,58 +142,77 @@ setup_kubeconfig(){
     sed -i "s/0.0.0.0/$ip/g" "${modified_file}"
 }
 
-dev_up(){
-    # Touch runtime dev cluster config 
+# Function to check if backend is ready (with timeout)
+wait_for_service() {
+    local name="$1"
+    local url="$2"
+    local timeout="$3"
+    echo "Waiting for ${name} to be ready (Timeout: ${timeout} seconds)..."
+    local elapsed=0
+    while ! curl --output /dev/null --silent --head --fail "$url"; do
+        if [[ $elapsed -ge $timeout ]]; then
+            echo "❌ ${name} did not start within ${timeout} seconds. Exiting."
+            exit 1
+        fi
+        echo -n "."
+        sleep 2
+        ((elapsed+=2))
+    done
+    echo "✅ ${name} is ready!"
+}
+
+up(){
+    local mode=${1:-dev}
+    # Touch runtime test cluster config 
     touch "${RUNTIME_DIR}/kubeconfig"
     docker_compose_installed
+    if [ "${mode}" == "dev" ]; then
+        local cluster_name="kupovi-dev"
+        local backend_url="http://localhost:5010/api/pods"
+        local frontend_url="http://localhost:3010/"
+        local cmd="${DOCKER_COMPOSE_CMD} -f ${SCRIPT_DIR}/docker-compose.yaml -f ${SCRIPT_DIR}/docker-compose.dev.override.yaml up --build -d"
+        echo "Starting in DEVELOPMENT mode..."
+    elif [ "${mode}" == "test" ]; then
+        local cluster_name="kupovi-test"
+        local backend_url="http://localhost:5000/api/pods"
+        local frontend_url="http://localhost:3000/"
+        local cmd="${DOCKER_COMPOSE_CMD} -f ${SCRIPT_DIR}/docker-compose.yaml up --build -d"
+        echo "Starting in PRODUCTION IMAGES TESTING mode..."
+    else
+        usage_error
+    fi
     # Start Docker Compose in detached mode
     echo "Bringing Docker Compose Up..."
-    cd "${SCRIPT_DIR}/dev" && ${DOCKER_COMPOSE_CMD} up -d
+    ${cmd}
     echo "Determining docker network host ip..."
     get_docker_host_ip
     echo "${HOST_IP_IN_DOCKER_NETWORK}"
     echo "Adding ${HOST_IP_IN_DOCKER_NETWORK} to the development cluster TLS certificate SANs..."
-    setup_dev_cluster "${HOST_IP_IN_DOCKER_NETWORK}"
+    setup_test_cluster "${HOST_IP_IN_DOCKER_NETWORK}"
     echo "Starting development cluster..."
-    k3d cluster create "${DEV_CLUSTER_NAME}" --config "${RUNTIME_DIR}/cluster.yaml"
+    k3d cluster create "${cluster_name}" --config "${RUNTIME_DIR}/cluster.yaml"
     setup_kubeconfig "${HOST_IP_IN_DOCKER_NETWORK}"
     echo "Restarting backend container after patching kubeconfig..."
-    cd "${SCRIPT_DIR}/dev" && ${DOCKER_COMPOSE_CMD} restart backend
-    echo "Opening backend on browser..."
-    xdg-open http://localhost:5010/api/pods
-    echo "Opening frontend on browser..."
-    xdg-open http://localhost:3000/
-}
-
-dev_down(){
-    docker_compose_installed
-    echo "Bringing Docker Compose Down..."
-    cd "${SCRIPT_DIR}/dev" && ${DOCKER_COMPOSE_CMD} down
-    k3d cluster delete "${DEV_CLUSTER_NAME}"
-}
-
-dev(){
-    # Check if no arguments were provided
-    if [ $# -eq 0 ]; then
-        usage_error
-    fi 
+    ${DOCKER_COMPOSE_CMD} restart backend
     
-    CMD=$1
-    shift 1 || true
-
-    if [ "${CMD}" = "init" ]; then
-        dev_init
-    elif [ "${CMD}" = "up" ]; then
-        dev_up
-    elif [ "${CMD}" = "down" ]; then
-        dev_down
-    else
-        echo "Invalid command: ${CMD}"
-        usage_error
-    fi
-
+    # Wait for backend before opening browser
+    wait_for_service "Backend" "${backend_url}" 30
+    echo "Opening backend on browser..."
+    xdg-open "${backend_url}"
+    
+    # Wait for frontend before opening browser
+    wait_for_service "Frontend" "${frontend_url}" 30
+    echo "Opening frontend on browser..."
+    xdg-open "${frontend_url}"
 }
 
+down(){
+    docker_compose_installed
+    echo "Bringing Docker Compose down..."
+    ${DOCKER_COMPOSE_CMD} down
+    k3d cluster delete kupovi-dev
+    k3d cluster delete kupovi-test
+}
 
 # Check if no arguments were provided
 if [ $# -eq 0 ]; then
@@ -195,8 +222,12 @@ fi
 CMD=$1
 shift 1 || true
 
-if [ "${CMD}" = "dev" ]; then
-    dev "$@"
+if [ "${CMD}" = "init" ]; then
+    init "$@"
+elif [ "${CMD}" = "up" ]; then
+    up "$@"
+elif [ "${CMD}" = "down" ]; then
+    down "$@"
 else
     echo "Invalid command: ${CMD}"
     usage_error

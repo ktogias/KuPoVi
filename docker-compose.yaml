@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: services/backend
+      target: prod
+    ports:
+      - "5000:5010"
+    volumes:
+      - .runtime/kubeconfig:/root/.kube/config:ro # Mount kubeconfig file for cluster access
+    restart: always
+    environment:
+      - KUBECONFIG=/root/.kube/config
+
+  frontend:
+    build:
+      context: services/frontend
+      target: prod
+    ports:
+      - "3000:80"
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://localhost:5000

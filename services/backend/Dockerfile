@@ -1,25 +1,33 @@
-# Base image for Python
-FROM python:3.10-slim
+# ====== Base Stage ======
+FROM python:3.10-slim AS base
 
-# Set the working directory
 WORKDIR /app
 
-# Install kubectl
-RUN apt-get update && apt-get install -y curl \
-    && curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-    && chmod +x kubectl \
-    && mv kubectl /usr/local/bin/ \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy the backend files
-COPY app/ /app
+# Copy dependency files first for better caching
+COPY app/requirements.txt ./
 
 # Install dependencies
-RUN pip install --no-cache-dir flask flask-cors
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the backend port
+# Copy the rest of the application
+COPY app/ .
+
+# Expose API port
 EXPOSE 5010
 
-# Run the backend
-CMD ["python", "src/k8s_api.py"]
+
+# ====== Development Stage ======
+FROM base AS dev
+
+# Run Flask in development mode with auto-reload
+CMD ["flask", "--app", "src/k8s_api.py", "run", "--host=0.0.0.0", "--port=5010", "--debug"]
+
+
+# ====== Production (for Both Docker & Kubernetes) ======
+FROM base AS prod
+
+# Install Gunicorn for production
+RUN pip install gunicorn
+
+# Run the production backend with Gunicorn (4 workers)
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5010", "src.k8s_api:app"]

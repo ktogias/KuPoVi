@@ -10,14 +10,20 @@ const KuPoVi = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const response = await fetch("http://localhost:5010/api/pods");
-      const newData = await response.json();
+      const backendUrl = window.APP_CONFIG?.BACKEND_URL || "http://localhost:5010";
+      try {
+        const response = await fetch(`${backendUrl}/api/pods`);
+        const newData = await response.json();
 
-      if (JSON.stringify(newData) !== JSON.stringify(previousData)) {
-        setData(newData);
-        setPreviousData(newData);
+        if (JSON.stringify(newData) !== JSON.stringify(previousData)) {
+          setData(newData);
+          setPreviousData(newData);
+        } 
+      } catch (error) {
+        console.error("Error fetching pods:", error);
       }
     };
+      
 
     fetchData();
     const interval = setInterval(fetchData, 5000); // Poll every 5 seconds

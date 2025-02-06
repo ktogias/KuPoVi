@@ -1,0 +1,25 @@
+services:
+  backend:
+    build:
+      target: dev
+    ports:
+      - "5010:5010"
+    volumes:
+    - .runtime/kubeconfig:/root/.kube/config:ro # Mount kubeconfig file for cluster access
+    - ./services/backend/app:/app
+    environment:
+      - KUBECONFIG=/root/.kube/config
+    command: ["sh", "-c", "pip install -r requirements.txt && flask --app src/k8s_api.py run --host=0.0.0.0 --port=5010 --debug"]
+
+  frontend:
+    build:
+      target: dev
+    ports:
+      - "3010:3000"
+    volumes:
+      - ./services/frontend/app:/app
+      - /app/node_modules # Prevents overwriting node_modules from the host
+    command: ["sh", "-c", "npm install && npm start"]
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Enables hot reload inside Docker
+      - BACKEND_URL=http://localhost:5010
