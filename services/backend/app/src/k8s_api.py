@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from kubernetes import client, config
 import os
@@ -6,10 +6,10 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-def get_pod_data():
+def get_pod_data(namespace=None):
     """
     Fetch pod data using the Kubernetes Python Client.
-    Automatically detects whether it's running inside a cluster or using kubeconfig.
+    Allows filtering by namespace.
     """
     try:
         # Load Kubernetes configuration
@@ -19,7 +19,12 @@ def get_pod_data():
             config.load_kube_config()  # Running locally, using ~/.kube/config
 
         v1 = client.CoreV1Api()
-        pod_list = v1.list_pod_for_all_namespaces(watch=False)
+
+        # Fetch pods, either from a specific namespace or all namespaces
+        if namespace:
+            pod_list = v1.list_namespaced_pod(namespace)
+        else:
+            pod_list = v1.list_pod_for_all_namespaces(watch=False)
 
         nodes = {}
         pods = []
@@ -41,14 +46,17 @@ def get_pod_data():
                     [{"name": pod["name"], "node": None} for pod in pods]
         }
 
+    except client.exceptions.ApiException as e:
+        return {"error": "Kubernetes API error", "details": e.reason}, e.status
     except Exception as e:
         return {"error": "Failed to fetch pod data", "details": str(e)}, 500
 
 
 @app.route("/api/pods", methods=["GET"])
 def api_pods():
-    """API route to get pod data"""
-    return jsonify(get_pod_data())
+    """API route to get pod data, with optional namespace selection"""
+    namespace = request.args.get("namespace")  # Get namespace from query params
+    return jsonify(get_pod_data(namespace))
 
 
 if __name__ == "__main__":
