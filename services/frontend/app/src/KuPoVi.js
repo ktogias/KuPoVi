@@ -12,7 +12,7 @@ const KuPoVi = () => {
     const fetchData = async () => {
       const backendUrl = window.APP_CONFIG?.BACKEND_URL || "http://localhost:5010";
       try {
-        const response = await fetch(`${backendUrl}/api/pods?namespace=default&label=zone`);
+        const response = await fetch(`${backendUrl}/api/pods?namespace=default&label=zone&display=label`);
         const newData = await response.json();
 
         if (JSON.stringify(newData) !== JSON.stringify(previousData)) {
