@@ -1,4 +1,19 @@
 apiVersion: k3d.io/v1alpha5
 kind: Simple
 servers: 1
-agents: 3
+agents: 4
+options:
+  k3s:
+    nodeLabels:
+      - label: zone=eu-central-cloud-1a
+        nodeFilters:
+          - agent:0
+      - label: zone=eu-central-cloud-1b
+        nodeFilters:
+          - agent:1
+      - label: zone=eu-south-edge-1a
+        nodeFilters:
+          - agent:2
+      - label: zone=eu-south-edge-1b
+        nodeFilters:
+          - agent:3
