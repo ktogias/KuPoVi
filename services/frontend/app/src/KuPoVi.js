@@ -55,6 +55,7 @@ const KuPoVi = () => {
         deployment: pod.deployment, // Include deployment information
         type: "pod",
         parent: pod.node,
+        ready: pod.ready
       })),
     ];
 
@@ -102,18 +103,18 @@ const KuPoVi = () => {
       .attr("class", "link")
       .attr("stroke", "gray");
 
-      const node = svg
+    const node = svg
       .selectAll(".node")
       .data(nodes)
       .join("circle")
       .attr("class", "node")
       .attr("r", (d) => (d.type === "node" ? 15 : 8))
       .attr("fill", (d) => {
-        if (d.type === "pod" && !d.parent) {
-          // Unassigned pods (no parent node) are always red
+        if (d.type === "pod" && (!d.parent || !d.ready)) {
+          // Unassigned or not ready pods are red
           return "red";
         } else if (d.type === "pod") {
-          // Assigned pods (with parent node) are colored by deployment
+          // Assigned and ready pods are colored by deployment
           const deploymentColors = d3
             .scaleOrdinal(d3.schemeCategory10)
             .domain(data.pods.map((pod) => pod.deployment || pod.name));
@@ -140,7 +141,7 @@ const KuPoVi = () => {
       .attr("y", (d) => d.y - 20)
       .attr("text-anchor", "middle")
       .style("font-size", "12px")
-      .style("fill", (d) => (d.type === "pod" && !d.parent ? "red" : "black"))
+      .style("fill", (d) => (d.type === "pod" && (!d.parent || !d.ready) ? "red" : "black"))
       .text((d) => (d.type === "pod" ? (displayMode === "pod" ? d.id : d.deployment) : d.id));
 
       function ticked() {

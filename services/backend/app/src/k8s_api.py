@@ -53,23 +53,20 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
             pod_list = v1.list_pod_for_all_namespaces(watch=False)
 
         pods = []
-        deployment_colors = {}
 
         for pod in pod_list.items:
             node_name = pod.spec.node_name
             pod_name = pod.metadata.name
             deployment_name = pod.metadata.labels.get("app") or pod.metadata.labels.get("deployment", "unknown")
-
-            # Assign a color per deployment
-            if deployment_name not in deployment_colors:
-                color_hash = hashlib.md5(deployment_name.encode()).hexdigest()[:6]  # Generate a color
-                deployment_colors[deployment_name] = f"#{color_hash}"
+            ready = any(
+                status.ready for status in pod.status.container_statuses or []
+            ) if pod.status.container_statuses else False
 
             pod_data = {
                 "name": pod_name,
                 "node": None if not node_name else filtered_nodes.get(node_name, {}).get("display_name"),
                 "deployment": deployment_name,
-                "color": deployment_colors[deployment_name],
+                "ready": ready,
             }
 
             if node_name and node_name in filtered_nodes:
