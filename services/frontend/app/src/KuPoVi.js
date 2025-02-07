@@ -33,16 +33,20 @@ const KuPoVi = () => {
   useEffect(() => {
     if (!data.nodes.length) return;
 
-    // Define a color scale for deployments
-    const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
-
-    // Map deployments to colors
-    const deploymentColors = {};
-    data.pods.forEach((pod) => {
-      if (pod.deployment && !deploymentColors[pod.deployment]) {
-        deploymentColors[pod.deployment] = colorScale(pod.deployment);
-      }
-    });
+    const colorDistance = (color1, color2) => {
+      const rgb1 = d3.rgb(color1);
+      const rgb2 = d3.rgb(color2);
+      return Math.sqrt(
+        (rgb1.r - rgb2.r) ** 2 +
+        (rgb1.g - rgb2.g) ** 2 +
+        (rgb1.b - rgb2.b) ** 2
+      );
+    };
+  
+    // Threshold distance to exclude red and similar shades
+    const red = "#ff0000";
+    const purple = "#9467bd";
+    const threshold = 150; // Adjust for strictness
 
     const svg = d3.select(svgRef.current)
       .attr("width", width)
@@ -116,7 +120,7 @@ const KuPoVi = () => {
         } else if (d.type === "pod") {
           // Assigned and ready pods are colored by deployment
           const deploymentColors = d3
-            .scaleOrdinal(d3.schemeCategory10)
+            .scaleOrdinal(d3.schemeCategory10.filter((color) => colorDistance(color, red) > threshold && color !== purple) )
             .domain(data.pods.map((pod) => pod.deployment || pod.name));
           return deploymentColors(d.deployment || d.parent);
         } else if (d.type === "node") {
