@@ -39,6 +39,7 @@ docker_compose_installed() {
     fi
 }
 yq_installed() { command_exists yq || { echo "Error: yq is not installed!"; exit 1; }; }
+jq_installed() { command_exists jq || { echo "Error: jq is not installed!"; exit 1; }; }
 install_k3d() { wget -q -O - "${K3D_INSTALL_SCRIPT}" | bash; }
 
 get_docker_host_ip() {
@@ -53,6 +54,7 @@ init() {
     docker_installed
     docker_compose_installed
     yq_installed
+    jq_installed
     install_k3d
 }
 
