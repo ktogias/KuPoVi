@@ -55,6 +55,9 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
         pods = []
 
         for pod in pod_list.items:
+            # **Exclude completed pods**
+            if pod.status.phase == "Succeeded":
+                continue
             node_name = pod.spec.node_name
             pod_name = pod.metadata.name
             deployment_name = pod.metadata.labels.get("app") or pod.metadata.labels.get("deployment", "unknown")
