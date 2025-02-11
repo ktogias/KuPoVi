@@ -1,17 +1,42 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from kubernetes import client, config
+from urllib.parse import unquote
 import os
 import hashlib
 
 app = Flask(__name__)
 CORS(app)
 
-def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
+def parse_label_filters(label_query):
     """
-    Fetch pod and node data using the Kubernetes Python Client.
-    Ensures that only nodes with a specified label are included.
-    Allows customizing node name display format.
+    Parses label filters from the request query.
+    Converts "zone%3Dedge%2Cworkload%2Carch%3Darm" → {'zone': 'edge', 'workload': None, 'arch': 'arm'}
+    """
+    if not label_query:
+        return {}
+
+    label_filters = {}
+    decoded_query = unquote(label_query)  # Decode %3D and %2C
+
+    filters = decoded_query.split(",")
+
+    for filter_str in filters:
+        key_value = filter_str.split("=")
+        if len(key_value) == 2:
+            label_filters[key_value[0]] = key_value[1]  # Key=Value condition
+        else:
+            label_filters[key_value[0]] = None  # Key exists without value constraint
+
+    return label_filters
+
+
+def get_pod_data(namespace=None, label_filters=None):
+    """
+    Fetches Kubernetes pod and node data.
+    - Filters nodes based on provided label conditions.
+    - Sends full node metadata (name + labels) to frontend.
+    - Excludes completed pods.
     """
     try:
         # Load Kubernetes configuration
@@ -31,20 +56,19 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
             node_name = node.metadata.name
             node_labels = node.metadata.labels
 
-            if filter_label:
-                key, value = filter_label.split("=") if "=" in filter_label else (filter_label, None)
-                if key not in node_labels or (value and node_labels[key] != value):
+            # Apply label filtering
+            if label_filters:
+                matches = all(
+                    (key in node_labels and (value is None or node_labels[key] == value))
+                    for key, value in label_filters.items()
+                )
+                if not matches:
                     continue
 
-            if display_mode == "name":
-                display_name = node_name
-            elif display_mode == "label":
-                display_name = node_labels.get(filter_label.split("=")[0], "Unknown")
-            else:
-                label_value = node_labels.get(filter_label.split("=")[0], "Unknown") if filter_label else ""
-                display_name = f"{node_name} ({label_value})" if filter_label else node_name
-
-            filtered_nodes[node_name] = {"display_name": display_name, "pods": []}
+            filtered_nodes[node_name] = {
+                "name": node_name,
+                "labels": node_labels
+            }
 
         # Fetch pods, either from a specific namespace or all namespaces
         if namespace:
@@ -67,19 +91,19 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
 
             pod_data = {
                 "name": pod_name,
-                "node": None if not node_name else filtered_nodes.get(node_name, {}).get("display_name"),
+                "node": node_name if node_name in filtered_nodes else None,  # Only include filtered nodes
                 "deployment": deployment_name,
                 "ready": ready,
             }
 
-            if node_name and node_name in filtered_nodes:
-                filtered_nodes[node_name]["pods"].append(pod_data)
-            elif not node_name:
-                pods.append(pod_data)
+            #if node_name and node_name in filtered_nodes:
+            #    filtered_nodes[node_name]["pods"].append(pod_data)
+            #elif not node_name:
+            pods.append(pod_data)
 
         return {
-            "nodes": [{"name": data["display_name"]} for data in filtered_nodes.values()],
-            "pods": [pod for node in filtered_nodes.values() for pod in node["pods"]] + pods
+            "nodes": list(filtered_nodes.values()),  # Send full node data (name + labels)
+            "pods": pods
         }
 
     except client.exceptions.ApiException as e:
@@ -92,10 +116,11 @@ def get_pod_data(namespace=None, filter_label=None, display_mode="both"):
 def api_pods():
     """API route to get pod data, with optional namespace, label filtering, and display options"""
     namespace = request.args.get("namespace")
-    filter_label = request.args.get("label")
-    display_mode = request.args.get("display", "both")
+    label_query = request.args.get("labels")  # Example: "zone=edge,workload,arch=arm"
+    label_filters = parse_label_filters(label_query)
 
-    return jsonify(get_pod_data(namespace, filter_label, display_mode))
+
+    return jsonify(get_pod_data(namespace, label_filters))
 
 @app.route("/api/namespaces", methods=["GET"])
 def api_namespaces():

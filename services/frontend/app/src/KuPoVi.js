@@ -10,6 +10,8 @@ const KuPoVi = () => {
   const [displayMode, setDisplayMode] = useState("pod"); // Default to display pod names
   const [namespaces, setNamespaces] = useState([]); // Available namespaces
   const [selectedNamespace, setSelectedNamespace] = useState("default"); // Default namespace
+  const [selectedNodeLabels, setSelectedNodeLabels] = useState(["name"]); // Default to node name
+  const [availableLabels, setAvailableLabels] = useState([]); // Stores available node labels
 
   const backendUrl = window.APP_CONFIG?.BACKEND_URL || "http://localhost:5010";
 
@@ -39,6 +41,14 @@ const KuPoVi = () => {
         if (JSON.stringify(newData) !== JSON.stringify(previousData)) {
           setData(newData);
           setPreviousData(newData);
+
+          // Extract unique labels from nodes
+          const labels = new Set();
+          newData.nodes.forEach((node) => {
+            Object.keys(node.labels || {}).forEach((label) => labels.add(label));
+          });
+
+          setAvailableLabels([...labels]); // Update available labels in dropdown
         }
       } catch (error) {
         console.error("Error fetching pods:", error);
@@ -73,7 +83,7 @@ const KuPoVi = () => {
       .attr("height", height);
 
     const nodes = [
-      ...data.nodes.map((n) => ({ id: n.name, type: "node" })),
+      ...data.nodes.map((n) => ({ id: n.name, type: "node", labels: n.labels })),
       ...data.pods.map((pod) => ({
         id: pod.name,
         deployment: pod.deployment, // Include deployment information
@@ -157,16 +167,21 @@ const KuPoVi = () => {
           .on("end", dragended)
       );
 
-    const nodeLabels = svg.selectAll(".node-label")
-      .data(nodes)
-      .join("text")
-      .attr("class", "node-label")
-      .attr("x", (d) => d.x)
-      .attr("y", (d) => d.y - 20)
-      .attr("text-anchor", "middle")
-      .style("font-size", "12px")
-      .style("fill", (d) => (d.type === "pod" && (!d.parent || !d.ready) ? "red" : "black"))
-      .text((d) => (d.type === "pod" ? (displayMode === "pod" ? d.id : d.deployment) : d.id));
+      
+
+    function formatNodeLabel(node) {
+      const selectedLabels = selectedNodeLabels.filter((key) => key !== "name");
+      const labelValues = selectedLabels.map((label) => node.labels[label]).filter(Boolean);
+
+      if (selectedNodeLabels.includes("name") && labelValues.length > 0) {
+        return `${node.id} (${labelValues.join(", ")})`; // Show name and selected labels
+      } else if (selectedNodeLabels.includes("name")) {
+        return node.id; // Only show name
+      } else {
+        return labelValues.length === 1 ? labelValues[0] : `${selectedLabels.join(", ")}: ${labelValues.join(", ")}`;
+      }
+    }
+
 
       function ticked() {
         link
@@ -184,16 +199,31 @@ const KuPoVi = () => {
             const radius = d.type === "node" ? 15 : 8; // Radius of node or pod
             return (d.y = Math.max(radius, Math.min(height - radius, d.y)));
           });
+
+          svg.selectAll(".node-label")
+    .data(nodes)
+    .join("text")
+    .attr("class", "node-label")
+    .attr("x", function (d) {
+      const labelWidth = this.getComputedTextLength(); // Dynamic width adjustment
+      return Math.max(
+        labelWidth / 2,
+        Math.min(width - labelWidth / 2, d.x)
+      );
+    })
+    .attr("y", (d) => Math.max(20, Math.min(height - 20, d.y - 20))) // Prevent clipping at top/bottom
+    .attr("text-anchor", "middle")
+    .style("font-size", "12px")
+    .style("fill", "black")
+    .text((d) => {
+      if (d.type === "pod") {
+        return displayMode === "pod" ? d.id : d.deployment;
+      } else if (d.type === "node") {
+        return formatNodeLabel(d);
+      }
+      return "";
+    });
       
-        nodeLabels
-          .attr("x", function (d) {
-            const labelWidth = this.getComputedTextLength(); // Dynamic width adjustment
-            return Math.max(
-              labelWidth / 2,
-              Math.min(width - labelWidth / 2, d.x)
-            );
-          })
-          .attr("y", (d) => Math.max(20, Math.min(height - 20, d.y - 20))); // Prevent clipping at top/bottom
       }
       
 
@@ -226,6 +256,21 @@ const KuPoVi = () => {
             </option>
           ))}
         </select>
+
+        <label style={{ marginLeft: "20px" }}>
+          Node Caption: </label>
+          <select
+            multiple
+            value={selectedNodeLabels}
+            onChange={(e) =>
+              setSelectedNodeLabels([...e.target.options].filter(o => o.selected).map(o => o.value))
+            }
+          >
+            <option value="name">Node Name</option>
+            {availableLabels.map((label) => (
+              <option key={label} value={label}>{label}</option>
+            ))}
+          </select>
 
         <label style={{ marginLeft: "20px" }}>Pod caption: </label>
         <select value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
