@@ -8,12 +8,32 @@ const KuPoVi = () => {
   const [data, setData] = useState({ nodes: [], pods: [] });
   const [previousData, setPreviousData] = useState(null);
   const [displayMode, setDisplayMode] = useState("pod"); // Default to display pod names
+  const [namespaces, setNamespaces] = useState([]); // Available namespaces
+  const [selectedNamespace, setSelectedNamespace] = useState("default"); // Default namespace
+
+  const backendUrl = window.APP_CONFIG?.BACKEND_URL || "http://localhost:5010";
+
+  useEffect(() => {
+    // Fetch available namespaces
+    const fetchNamespaces = async () => {
+      try {
+        const response = await fetch(`${backendUrl}/api/namespaces`);
+        const namespaceData = await response.json();
+        setNamespaces(namespaceData.namespaces);
+      } catch (error) {
+        console.error("Error fetching namespaces:", error);
+      }
+    };
+
+    fetchNamespaces();
+    const interval = setInterval(fetchNamespaces, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
-      const backendUrl = window.APP_CONFIG?.BACKEND_URL || "http://localhost:5010";
       try {
-        const response = await fetch(`${backendUrl}/api/pods?namespace=default&label=zone&display=label`);
+        const response = await fetch(`${backendUrl}/api/pods?namespace=${selectedNamespace}&label=zone&display=label`);
         const newData = await response.json();
 
         if (JSON.stringify(newData) !== JSON.stringify(previousData)) {
@@ -28,7 +48,7 @@ const KuPoVi = () => {
     fetchData();
     const interval = setInterval(fetchData, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
-  }, [previousData]);
+  }, [previousData, selectedNamespace]);
 
   useEffect(() => {
     if (!data.nodes.length) return;
@@ -198,13 +218,20 @@ const KuPoVi = () => {
   return (
     <div>
       <div style={{ marginBottom: "10px" }}>
-        <label>
-          Display:
-          <select value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
-            <option value="pod">Pod Name</option>
-            <option value="deployment">Deployment Name</option>
-          </select>
-        </label>
+        <label>Namespace: </label>
+        <select value={selectedNamespace} onChange={(e) => setSelectedNamespace(e.target.value)}>
+          {namespaces.map((ns) => (
+            <option key={ns} value={ns}>
+              {ns}
+            </option>
+          ))}
+        </select>
+
+        <label style={{ marginLeft: "20px" }}>Pod caption: </label>
+        <select value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
+          <option value="pod">Pod Name</option>
+          <option value="deployment">Deployment Name</option>
+        </select>
       </div>
       <svg ref={svgRef}></svg>
     </div>

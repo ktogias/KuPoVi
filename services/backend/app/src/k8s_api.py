@@ -94,6 +94,12 @@ def api_pods():
 
     return jsonify(get_pod_data(namespace, filter_label, display_mode))
 
+@app.route("/api/namespaces", methods=["GET"])
+def api_namespaces():
+    v1 = client.CoreV1Api()
+    namespaces = [ns.metadata.name for ns in v1.list_namespace().items]
+    return jsonify({"namespaces": namespaces})
+
 
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1")
