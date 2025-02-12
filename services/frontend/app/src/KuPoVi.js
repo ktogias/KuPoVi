@@ -200,7 +200,7 @@ const KuPoVi = () => {
             return (d.y = Math.max(radius, Math.min(height - radius, d.y)));
           });
 
-          svg.selectAll(".node-label")
+          const nodeLabels = svg.selectAll(".node-label")
     .data(nodes)
     .join("text")
     .attr("class", "node-label")
@@ -243,7 +243,7 @@ const KuPoVi = () => {
       d.fx = null;
       d.fy = null;
     }
-  }, [data, displayMode]);
+  }, [data, displayMode, selectedNodeLabels]);
 
   return (
     <div>
