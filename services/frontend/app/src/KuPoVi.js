@@ -72,7 +72,7 @@ const KuPoVi = () => {
         (rgb1.b - rgb2.b) ** 2
       );
     };
-  
+
     // Threshold distance to exclude red and similar shades
     const red = "#ff0000";
     const purple = "#9467bd";
@@ -114,8 +114,8 @@ const KuPoVi = () => {
           d.type === "node"
             ? width / 4
             : d.parent
-            ? width / 2
-            : Math.random() * (width - 20) + 10
+              ? width / 2
+              : Math.random() * (width - 20) + 10
         )
       )
       .force(
@@ -124,8 +124,8 @@ const KuPoVi = () => {
           d.type === "node"
             ? height / 2
             : d.parent
-            ? height / 2
-            : Math.random() * (height - 20) + 10
+              ? height / 2
+              : Math.random() * (height - 20) + 10
         )
       )
       .force("collide", d3.forceCollide().radius((d) => (d.type === "node" ? 100 : 40)))
@@ -150,7 +150,7 @@ const KuPoVi = () => {
         } else if (d.type === "pod") {
           // Assigned and ready pods are colored by deployment
           const deploymentColors = d3
-            .scaleOrdinal(d3.schemeCategory10.filter((color) => colorDistance(color, red) > threshold && color !== purple) )
+            .scaleOrdinal(d3.schemeCategory10.filter((color) => colorDistance(color, red) > threshold && color !== purple))
             .domain(data.pods.map((pod) => pod.deployment || pod.name));
           return deploymentColors(d.deployment || d.parent);
         } else if (d.type === "node") {
@@ -167,7 +167,7 @@ const KuPoVi = () => {
           .on("end", dragended)
       );
 
-      
+
 
     function formatNodeLabel(node) {
       const selectedLabels = selectedNodeLabels.filter((key) => key !== "name");
@@ -183,49 +183,49 @@ const KuPoVi = () => {
     }
 
 
-      function ticked() {
-        link
-          .attr("x1", (d) => Math.max(0, Math.min(width, d.source.x)))
-          .attr("y1", (d) => Math.max(0, Math.min(height, d.source.y)))
-          .attr("x2", (d) => Math.max(0, Math.min(width, d.target.x)))
-          .attr("y2", (d) => Math.max(0, Math.min(height, d.target.y)));
-      
-        node
-          .attr("cx", (d) => {
-            const radius = d.type === "node" ? 15 : 8; // Radius of node or pod
-            return (d.x = Math.max(radius, Math.min(width - radius, d.x)));
-          })
-          .attr("cy", (d) => {
-            const radius = d.type === "node" ? 15 : 8; // Radius of node or pod
-            return (d.y = Math.max(radius, Math.min(height - radius, d.y)));
-          });
+    function ticked() {
+      link
+        .attr("x1", (d) => Math.max(0, Math.min(width, d.source.x)))
+        .attr("y1", (d) => Math.max(0, Math.min(height, d.source.y)))
+        .attr("x2", (d) => Math.max(0, Math.min(width, d.target.x)))
+        .attr("y2", (d) => Math.max(0, Math.min(height, d.target.y)));
 
-          const nodeLabels = svg.selectAll(".node-label")
-    .data(nodes)
-    .join("text")
-    .attr("class", "node-label")
-    .attr("x", function (d) {
-      const labelWidth = this.getComputedTextLength(); // Dynamic width adjustment
-      return Math.max(
-        labelWidth / 2,
-        Math.min(width - labelWidth / 2, d.x)
-      );
-    })
-    .attr("y", (d) => Math.max(20, Math.min(height - 20, d.y - 20))) // Prevent clipping at top/bottom
-    .attr("text-anchor", "middle")
-    .style("font-size", "12px")
-    .style("fill", "black")
-    .text((d) => {
-      if (d.type === "pod") {
-        return displayMode === "pod" ? d.id : d.deployment;
-      } else if (d.type === "node") {
-        return formatNodeLabel(d);
-      }
-      return "";
-    });
-      
-      }
-      
+      node
+        .attr("cx", (d) => {
+          const radius = d.type === "node" ? 15 : 8; // Radius of node or pod
+          return (d.x = Math.max(radius, Math.min(width - radius, d.x)));
+        })
+        .attr("cy", (d) => {
+          const radius = d.type === "node" ? 15 : 8; // Radius of node or pod
+          return (d.y = Math.max(radius, Math.min(height - radius, d.y)));
+        });
+
+      const nodeLabels = svg.selectAll(".node-label")
+        .data(nodes)
+        .join("text")
+        .attr("class", "node-label")
+        .attr("x", function (d) {
+          const labelWidth = this.getComputedTextLength(); // Dynamic width adjustment
+          return Math.max(
+            labelWidth / 2,
+            Math.min(width - labelWidth / 2, d.x)
+          );
+        })
+        .attr("y", (d) => Math.max(20, Math.min(height - 20, d.y - 20))) // Prevent clipping at top/bottom
+        .attr("text-anchor", "middle")
+        .style("font-size", "12px")
+        .style("fill", "black")
+        .text((d) => {
+          if (d.type === "pod") {
+            return displayMode === "pod" ? d.id : d.deployment;
+          } else if (d.type === "node") {
+            return formatNodeLabel(d);
+          }
+          return "";
+        });
+
+    }
+
 
     function dragstarted(event, d) {
       if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -259,18 +259,18 @@ const KuPoVi = () => {
 
         <label style={{ marginLeft: "20px" }}>
           Node Caption: </label>
-          <select
-            multiple
-            value={selectedNodeLabels}
-            onChange={(e) =>
-              setSelectedNodeLabels([...e.target.options].filter(o => o.selected).map(o => o.value))
-            }
-          >
-            <option value="name">Node Name</option>
-            {availableLabels.map((label) => (
-              <option key={label} value={label}>{label}</option>
-            ))}
-          </select>
+        <select
+          multiple
+          value={selectedNodeLabels}
+          onChange={(e) =>
+            setSelectedNodeLabels([...e.target.options].filter(o => o.selected).map(o => o.value))
+          }
+        >
+          <option value="name">Node Name</option>
+          {availableLabels.map((label) => (
+            <option key={label} value={label}>{label}</option>
+          ))}
+        </select>
 
         <label style={{ marginLeft: "20px" }}>Pod caption: </label>
         <select value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}>
